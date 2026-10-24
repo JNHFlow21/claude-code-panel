@@ -7,7 +7,7 @@
 Context, 5-hour / weekly / Fable rate limits with reset countdowns, prompt-cache TTL, cost, speed and session ID — in one glance, animated while Claude works.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-D97757.svg)](LICENSE)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-6A9BCC.svg)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-6A9BCC.svg)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-status%20line-D4A27F.svg)
 [![GitHub stars](https://img.shields.io/github/stars/JNHFlow21/claude-code-panel?style=social)](https://github.com/JNHFlow21/claude-code-panel/stargazers)
 
@@ -98,7 +98,7 @@ No. The `▶▶ bypass permissions on` row is drawn by Claude Code itself below 
 A redraw takes ~30 ms. The ~1 s ccstatusline run only happens when the session state changes, and never blocks Claude itself.
 
 **Does it work on Linux / with other fonts?**
-It needs Python 3.9+, a true-color terminal and a font with `▰ ▱ ▌ ✻ ↻` (most modern monospace fonts). Tested on macOS with Claude Code 2.1.302 and ccstatusline 2.2.32.
+It needs Python 3.10+, a true-color terminal and a font with `▰ ▱ ▌ ✻ ↻` (most modern monospace fonts). Tested on macOS with Claude Code 2.1.302 and ccstatusline 2.2.32.
 
 ## Uninstall
 
