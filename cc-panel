@@ -1,0 +1,301 @@
+#!/usr/bin/env -S python3 -I
+"""cc-panel: a Claude Code status line drawn as an aligned, animated panel.
+
+Claude Code pipes the status-line JSON on stdin. ccstatusline computes most values
+(it is called with a generated data-only config); cc-panel adds session timing from
+the transcript and lays everything out in a grid. `cc-panel --demo` renders sample data.
+"""
+import hashlib, json, os, re, shutil, subprocess, sys, time, unicodedata
+from datetime import datetime
+
+CACHE = os.path.expanduser("~/.cache/cc-panel")
+USAGE = os.path.expanduser("~/.cache/ccstatusline/usage.json")
+CCSL_VERSION = "2.2.32"
+SPIN = "·✢✳✶✻✽✻✶✳✢"
+WIDGETS = [
+    ("model", "model", {}), ("effort", "thinking-effort", {}),
+    ("ctx", "context-percentage", {"numberFormat": {"style": "whole"}}),
+    ("ctxlen", "context-length", {"numberFormat": {"style": "compact"}}),
+    ("five", "session-usage", {"numberFormat": {"style": "whole"}}),
+    ("week", "weekly-usage", {"numberFormat": {"style": "whole"}}),
+    ("fable", "fable-weekly-usage", {"numberFormat": {"style": "whole"}}),
+    ("clock", "session-clock", {}), ("cost", "session-cost", {"numberFormat": {"decimals": 4}}),
+    ("cache", "cache-hit-rate", {}), ("speed", "output-speed", {"numberFormat": {"style": "whole"}}),
+    ("tokens", "tokens-total", {}), ("sid", "claude-session-id", {}),
+]
+
+E = "\x1b["
+R, B = E + "0m", E + "1m"
+ORANGE, TAN, TEXT, DIM, SUB, GREEN, BLUE, WHITE, EMPTY = (
+    "D97757", "D4A27F", "D6D2C4", "87867F", "5E5D59", "9DB07F", "6A9BCC", "FAF9F5", "4A4945")
+AMBER, RED, GLOW = "E5B567", "E06C75", "F0A784"
+
+
+def fg(h):
+    return f"{E}38;2;{int(h[:2], 16)};{int(h[2:4], 16)};{int(h[4:], 16)}m"
+
+
+def width(s):
+    s = re.sub(r"\x1b\[[0-9;]*m", "", s)
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def pad(s, n):
+    return s + " " * (n - width(s))
+
+
+def lab(t):
+    return fg(DIM) + t + R
+
+
+def val(t, c=WHITE, bold=True):
+    return fg(c) + (B if bold else "") + (t or "—") + R
+
+
+def number(pct):
+    m = re.match(r"[\d.]+", pct or "")
+    return float(m.group()) if m else 0
+
+
+def heat(pct, color):
+    v = number(pct)
+    return RED if v >= 90 else AMBER if v >= 70 else color
+
+
+def bar(pct, color, n=8):
+    k = min(n, round(number(pct) / 100 * n))
+    return fg(color) + "▰" * k + fg(EMPTY) + "▱" * (n - k) + R
+
+
+def left(secs):
+    secs = int(secs)
+    if secs >= 86400:
+        return f"{secs // 86400}d{secs % 86400 // 3600}h"
+    return f"{secs // 3600}h{secs % 3600 // 60:02d}m" if secs >= 3600 else f"{secs // 60}m{secs % 60:02d}s"
+
+
+def dur(ms):
+    v = round(ms / 1000, 1)
+    if v < 60:
+        return f"{v:.1f}s"
+    v = round(v)
+    return f"{v // 60}m{v % 60:02d}s" if v < 3600 else f"{v // 3600}h{v % 3600 // 60:02d}m"
+
+
+def cache_file(*parts):
+    os.makedirs(CACHE, exist_ok=True)
+    return os.path.join(CACHE, hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:16])
+
+
+def write_json(path, data):  # status lines can render concurrently: write atomically
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+# --- values from ccstatusline -------------------------------------------------
+
+def ccstatusline_cmd():
+    found = os.environ.get("CC_PANEL_CCSTATUSLINE") or shutil.which("ccstatusline")
+    return [found] if found else ["npx", "-y", f"ccstatusline@{CCSL_VERSION}"]
+
+
+def data_config():
+    line = []
+    for i, (_, kind, extra) in enumerate(WIDGETS):
+        if i:
+            line.append({"type": "custom-text", "customText": "␟", "id": f"s{i}", "merge": "no-padding"})
+        line.append({"type": kind, "rawValue": True, "id": f"w{i}", "merge": "no-padding", **extra})
+    path = os.path.join(CACHE, "ccstatusline-data.json")
+    cfg = {"version": 4, "colorLevel": 0, "lines": [line]}
+    try:
+        if json.load(open(path)) == cfg:
+            return path
+    except (OSError, ValueError):
+        pass
+    os.makedirs(CACHE, exist_ok=True)
+    write_json(path, cfg)
+    return path
+
+
+def ccstatusline(stdin, j):
+    """Recomputed only when the session state changes: one ccstatusline run takes ~1s."""
+    cw, rl = j.get("context_window") or {}, j.get("rate_limits") or {}
+    key = json.dumps([j.get("model"), j.get("effort"), (j.get("cost") or {}).get("total_cost_usd"),
+                      cw.get("total_input_tokens"), cw.get("total_output_tokens"), rl,
+                      int(time.time() // 30)], sort_keys=True)  # time bucket keeps the clock fresh
+    path = cache_file("ccsl", j.get("session_id"))
+    try:
+        cached = json.load(open(path))
+        if cached["key"] == key:
+            return cached["out"]
+    except (OSError, ValueError, KeyError):
+        pass
+    try:
+        out = subprocess.run(ccstatusline_cmd() + ["--config", data_config()], input=stdin, capture_output=True,
+                             text=True, env={**os.environ, "CCSTATUSLINE_WIDTH": "1000"}, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    write_json(path, {"key": key, "out": out})
+    return out
+
+
+# --- session timing from the transcript ---------------------------------------
+
+FRESH = dict(offset=0, tool_ms=0, cur=None, open={}, wait_ms=0, waits=0, waiting_since=None)
+
+
+def stamp(ts):
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000
+
+
+def feed(s, e):
+    if e.get("isSidechain") or e.get("type") not in ("user", "assistant") or "timestamp" not in e:
+        return
+    t, content = stamp(e["timestamp"]), e.get("message", {}).get("content")
+    blocks = content if isinstance(content, list) else []
+    if e["type"] == "assistant":
+        if s["waiting_since"] is not None:
+            s["wait_ms"] += t - s["waiting_since"]; s["waits"] += 1
+            s["waiting_since"] = None
+        for b in blocks:
+            if b.get("type") == "tool_use":
+                s["open"][b.get("id")] = t
+        return
+    results = [b for b in blocks if b.get("type") == "tool_result"]
+    for b in results:
+        start = s["open"].pop(b.get("tool_use_id"), None)
+        if start is None:
+            continue
+        cur = s["cur"]  # merge overlapping [call, result] intervals so parallel tools count once
+        if cur and start <= cur[1]:
+            cur[1] = max(cur[1], t)
+        else:
+            if cur:
+                s["tool_ms"] += cur[1] - cur[0]
+            s["cur"] = [start, t]
+    if results and not s["open"]:
+        s["waiting_since"] = t
+    elif not results and not e.get("isMeta"):  # a human prompt starts a fresh request
+        s["open"].clear()
+        s["waiting_since"] = t
+
+
+def timing(path):
+    """(average wait until the first written block, tool wall time), scanned incrementally.
+
+    The wait is an upper bound on TTFT: the transcript stamps a block once it is complete.
+    """
+    if not path or not os.path.exists(path):
+        return None, None
+    cache = cache_file("timing", path)
+    try:
+        s = json.load(open(cache))
+    except (OSError, ValueError):
+        s = dict(FRESH)
+    if os.path.getsize(path) < s["offset"]:
+        s = dict(FRESH)
+    with open(path, "rb") as f:
+        f.seek(s["offset"])
+        for line in f:
+            if not line.endswith(b"\n"):
+                break  # partial write; read it next time
+            s["offset"] += len(line)
+            try:
+                feed(s, json.loads(line))
+            except (ValueError, KeyError, AttributeError, TypeError):
+                pass
+    try:
+        write_json(cache, s)
+    except OSError:
+        pass
+    tool = s["tool_ms"] + (s["cur"][1] - s["cur"][0] if s["cur"] else 0)
+    return (dur(s["wait_ms"] / s["waits"]) if s["waits"] else None), dur(tool)
+
+
+# --- layout -------------------------------------------------------------------
+
+def demo():
+    now = time.time()
+    j = {"session_id": "3f2a9c1e-7b4d-4e8a-9c21-5d6e0f1a2b3c",
+         "prompt_cache": {"expires_at": now + 3200 - now % 60},
+         "rate_limits": {"five_hour": {"resets_at": now + 5400}, "seven_day": {"resets_at": now + 190000}}}
+    d = dict(model="Opus 5.5", effort="high", ctx="38%", ctxlen="380k", five="64%", week="23%", fable="81%",
+             clock="42m", cost="$3.8217", cache="98.7%", speed="182 t/s", tokens="12.4M", sid=j["session_id"])
+    return j, d, ("6.1s", "48.3s"), True, now + 160000
+
+
+def render(j, d, first, tool, busy, fable_at, now):
+    tick = int(now)
+    star = SPIN[tick % len(SPIN)] if busy else "✻"
+    side = fg(GLOW if busy and tick % 2 else ORANGE) + "▌" + R
+
+    def gauge(pct, color, extra=""):
+        color, shown = heat(pct, color), (pct or "—").rjust(4)
+        return f"{bar(pct, color)} {val(shown, color)}{extra}"
+
+    def limit(pct, resets_at):
+        tail = f" {lab('↻')}{fg(TEXT)}{left(resets_at - now)}{R}" if resets_at and resets_at > now else ""
+        return gauge(pct, WHITE, tail)
+
+    ttl = ""
+    expires = (j.get("prompt_cache") or {}).get("expires_at")
+    if expires:
+        rest = expires - now
+        ttl = val(left(rest), GREEN if rest > 600 else AMBER if rest > 120 else RED) if rest > 0 else val("cold", RED)
+    rl = j.get("rate_limits") or {}
+
+    # top-left block: model/cost and effort/clock in two aligned sub-columns
+    mw = max(width(d["model"]), width(d["cost"]))
+    head = [f"{fg(ORANGE)}{star} {B}{pad(d['model'], mw)}{R} {fg(TAN)}{d['effort']}{R}",
+            f"  {val(pad(d['cost'], mw), GREEN)} {val(d['clock'])}", ""]
+
+    # each column: three rows of (label, value); the ID cell may overflow to the right
+    cols = [
+        [("", h) for h in head],
+        [("CTX", gauge(d["ctx"], TAN, f" {lab(d['ctxlen'])}")), ("CACHE", val(d["cache"], GREEN)),
+         ("TTL" if ttl else "", ttl)],
+        [("5H", limit(d["five"], (rl.get("five_hour") or {}).get("resets_at"))),
+         ("WK", limit(d["week"], (rl.get("seven_day") or {}).get("resets_at"))),
+         ("FABLE", limit(d["fable"], fable_at))],
+        [("OUT", val(d["speed"], BLUE)), ("TTFT", val(first)), ("TOOL", val(tool))],
+        [("TOK", val(d["tokens"])), ("ID", fg(SUB) + d["sid"] + R), ("", "")],
+    ]
+    rows = [[], [], []]
+    for col in cols:
+        lw = max(len(l) for l, _ in col)
+        cells = [(pad(lab(l), lw) + " " if lw and (l or v) else "") + v for l, v in col]
+        cw = max(width(c) for c, (l, _) in zip(cells, col) if l != "ID")
+        for r, c in zip(rows, cells):
+            r.append(pad(c, cw))
+    return "\n".join(f"{side}  " + "   ".join(r).rstrip() for r in rows)
+
+
+def main():
+    now = time.time()
+    if "--demo" in sys.argv:
+        j, d, (first, tool), busy, fable_at = demo()
+        print(render(j, d, first, tool, busy, fable_at, now))
+        return
+    stdin = sys.stdin.read()
+    try:
+        j = json.loads(stdin)
+    except ValueError:
+        j = {}
+    parts = re.sub(r"\x1b\[[0-9;]*m", "", ccstatusline(stdin, j)).strip().split("␟")
+    d = {k: v.strip() for (k, _, _), v in zip(WIDGETS, parts + [""] * len(WIDGETS))}
+    first, tool = timing(j.get("transcript_path"))
+    try:  # the transcript is written while Claude works
+        busy = now - os.path.getmtime(j.get("transcript_path") or "") < 4
+    except OSError:
+        busy = False
+    try:
+        fable_at = datetime.fromisoformat(json.load(open(USAGE))["fableResetAt"]).timestamp()
+    except (OSError, ValueError, KeyError, TypeError):
+        fable_at = None
+    print(render(j, d, first, tool, busy, fable_at, now))
+
+
+if __name__ == "__main__":
+    main()
