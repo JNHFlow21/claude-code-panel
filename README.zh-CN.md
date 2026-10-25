@@ -25,7 +25,7 @@
 ## 安装
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/JNHFlow21/claude-code-panel/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/install.sh | sh
 ```
 
 安装脚本会把 `cc-panel` 放到 `~/.local/bin`，没有 [ccstatusline](https://github.com/sirmalloc/ccstatusline) 时自动安装，先备份 `~/.claude/settings.json` 再写入 `statusLine` 配置（`refreshInterval: 1`）。不开 Claude Code 也能预览：`cc-panel --demo`。

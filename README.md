@@ -9,7 +9,7 @@ Context, 5-hour / weekly / Fable rate limits with reset countdowns, prompt-cache
 [![License: MIT](https://img.shields.io/badge/license-MIT-D97757.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-6A9BCC.svg)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-status%20line-D4A27F.svg)
-[![GitHub stars](https://img.shields.io/github/stars/JNHFlow21/claude-code-panel?style=social)](https://github.com/JNHFlow21/claude-code-panel/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/risingjerry/claude-code-panel?style=social)](https://github.com/risingjerry/claude-code-panel/stargazers)
 
 English · [简体中文](README.zh-CN.md)
 
@@ -32,7 +32,7 @@ The default Claude Code status line is one long row of loosely spaced text. **cl
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/JNHFlow21/claude-code-panel/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/install.sh | sh
 ```
 
 The installer copies `cc-panel` to `~/.local/bin`, installs [ccstatusline](https://github.com/sirmalloc/ccstatusline) if it is missing, backs up `~/.claude/settings.json` and sets:
@@ -53,7 +53,7 @@ Preview without Claude Code: `cc-panel --demo`.
 
 ```sh
 npm install -g ccstatusline@2.2.32
-curl -fsSL https://raw.githubusercontent.com/JNHFlow21/claude-code-panel/main/cc-panel -o ~/.local/bin/cc-panel
+curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/cc-panel -o ~/.local/bin/cc-panel
 chmod +x ~/.local/bin/cc-panel
 ```
 

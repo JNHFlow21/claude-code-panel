@@ -1,11 +1,11 @@
 #!/bin/sh
 # Installs cc-panel and points Claude Code's status line at it.
-#   curl -fsSL https://raw.githubusercontent.com/JNHFlow21/claude-code-panel/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/install.sh | sh
 set -eu
 
 BIN="${CC_PANEL_BIN:-$HOME/.local/bin}"
 SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-SRC="https://raw.githubusercontent.com/JNHFlow21/claude-code-panel/main/cc-panel"
+SRC="https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/cc-panel"
 
 command -v python3 >/dev/null || { echo "cc-panel needs python3" >&2; exit 1; }
 mkdir -p "$BIN"
