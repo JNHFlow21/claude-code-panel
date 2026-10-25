@@ -11,14 +11,12 @@ from datetime import datetime
 CACHE = os.path.expanduser("~/.cache/cc-panel")
 USAGE = os.path.expanduser("~/.cache/ccstatusline/usage.json")
 CCSL_VERSION = "2.2.32"
+FABLE_EVERY, FABLE_BACKOFF = 900, 1800  # the usage API rate-limits hard: one fetch per window for all sessions
 SPIN = "·✢✳✶✻✽✻✶✳✢"
 WIDGETS = [
     ("model", "model", {}), ("effort", "thinking-effort", {}),
     ("ctx", "context-percentage", {"numberFormat": {"style": "whole"}}),
     ("ctxlen", "context-length", {"numberFormat": {"style": "compact"}}),
-    ("five", "session-usage", {"numberFormat": {"style": "whole"}}),
-    ("week", "weekly-usage", {"numberFormat": {"style": "whole"}}),
-    ("fable", "fable-weekly-usage", {"numberFormat": {"style": "whole"}}),
     ("clock", "session-clock", {}), ("cost", "session-cost", {"numberFormat": {"decimals": 4}}),
     ("cache", "cache-hit-rate", {}), ("speed", "output-speed", {"numberFormat": {"style": "whole"}}),
     ("tokens", "tokens-total", {}), ("sid", "claude-session-id", {}),
@@ -101,13 +99,13 @@ def ccstatusline_cmd():
     return [found] if found else ["npx", "-y", f"ccstatusline@{CCSL_VERSION}"]
 
 
-def data_config():
+def data_config(widgets=WIDGETS, name="ccstatusline-data.json"):
     line = []
-    for i, (_, kind, extra) in enumerate(WIDGETS):
+    for i, (_, kind, extra) in enumerate(widgets):
         if i:
             line.append({"type": "custom-text", "customText": "␟", "id": f"s{i}", "merge": "no-padding"})
         line.append({"type": kind, "rawValue": True, "id": f"w{i}", "merge": "no-padding", **extra})
-    path = os.path.join(CACHE, "ccstatusline-data.json")
+    path = os.path.join(CACHE, name)
     cfg = {"version": 4, "colorLevel": 0, "lines": [line]}
     try:
         if json.load(open(path)) == cfg:
@@ -124,7 +122,7 @@ def ccstatusline(stdin, j):
     cw, rl = j.get("context_window") or {}, j.get("rate_limits") or {}
     key = json.dumps([j.get("model"), j.get("effort"), (j.get("cost") or {}).get("total_cost_usd"),
                       cw.get("total_input_tokens"), cw.get("total_output_tokens"), rl,
-                      int(time.time() // 30)], sort_keys=True)  # time bucket keeps the clock fresh
+                      int(time.time() // 30), [k for k, _, _ in WIDGETS]], sort_keys=True)  # time bucket keeps the clock fresh
     path = cache_file("ccsl", j.get("session_id"))
     try:
         cached = json.load(open(path))
@@ -235,9 +233,9 @@ def render(j, d, first, tool, busy, fable_at, now):
         color, shown = heat(pct, color), (pct or "—").rjust(4)
         return f"{bar(pct, color)} {val(shown, color)}{extra}"
 
-    def limit(pct, resets_at):
+    def limit(key, resets_at):
         tail = f" {lab('↻')}{fg(TEXT)}{left(resets_at - now)}{R}" if resets_at and resets_at > now else ""
-        return gauge(pct, WHITE, tail)
+        return gauge(d[key], DIM if key in d.get("stale", ()) else WHITE, tail)
 
     ttl = ""
     expires = (j.get("prompt_cache") or {}).get("expires_at")
@@ -256,9 +254,9 @@ def render(j, d, first, tool, busy, fable_at, now):
         [("", h) for h in head],
         [("CTX", gauge(d["ctx"], TAN, f" {lab(d['ctxlen'])}")), ("CACHE", val(d["cache"], GREEN)),
          ("TTL" if ttl else "", ttl)],
-        [("5H", limit(d["five"], (rl.get("five_hour") or {}).get("resets_at"))),
-         ("WK", limit(d["week"], (rl.get("seven_day") or {}).get("resets_at"))),
-         ("FABLE", limit(d["fable"], fable_at))],
+        [("5H", limit("five", (rl.get("five_hour") or {}).get("resets_at"))),
+         ("WK", limit("week", (rl.get("seven_day") or {}).get("resets_at"))),
+         ("FABLE", limit("fable", fable_at))],
         [("OUT", val(d["speed"], BLUE)), ("TTFT", val(first)), ("TOOL", val(tool))],
         [("TOK", val(d["tokens"])), ("ID", fg(SUB) + d["sid"] + R), ("", "")],
     ]
@@ -270,6 +268,51 @@ def render(j, d, first, tool, busy, fable_at, now):
         for r, c in zip(rows, cells):
             r.append(pad(c, cw))
     return "\n".join(f"{side}  " + "   ".join(r).rstrip() for r in rows)
+
+
+def fable_usage(stdin):
+    """Fable weekly usage is the one value Claude Code does not pass in, so it needs the usage API.
+    Fetch it at most once per FABLE_EVERY across all sessions and keep the last good value."""
+    path = os.path.join(CACHE, "fable.json")
+    try:
+        s = json.load(open(path))
+    except (OSError, ValueError):
+        s = {}
+    now = time.time()
+    if now - s.get("tried", 0) >= s.get("wait", FABLE_EVERY):
+        s["tried"] = now
+        write_json(path, s)  # claim the window first so other sessions skip it
+        cfg = data_config([("fable", "fable-weekly-usage", {"numberFormat": {"style": "whole"}})], "ccstatusline-fable.json")
+        try:
+            out = subprocess.run(ccstatusline_cmd() + ["--config", cfg], input=stdin, capture_output=True,
+                                 text=True, env={**os.environ, "CCSTATUSLINE_WIDTH": "1000"}, timeout=10).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            out = ""
+        out = re.sub(r"\x1b\[[0-9;]*m", "", out).strip()
+        if re.fullmatch(r"[\d.]+%", out):
+            s.update(pct=out, ok=now, wait=FABLE_EVERY)
+        else:
+            s["wait"] = FABLE_BACKOFF
+        write_json(path, s)
+    return s.get("pct"), now - s.get("ok", 0) > 2 * FABLE_BACKOFF
+
+
+def usage_values(d, j, usage, stdin):
+    """5H/WK come straight from Claude Code's rate_limits (no API call); a session that has not
+    sent a request yet lacks them, so it shows the last cached value greyed out."""
+    rl, d["stale"] = j.get("rate_limits") or {}, set()
+    for key, live, field in (("five", "five_hour", "sessionUsage"), ("week", "seven_day", "weeklyUsage")):
+        pct = (rl.get(live) or {}).get("used_percentage")
+        if pct is None and isinstance(usage.get(field), (int, float)):
+            pct = usage[field]
+            d["stale"].add(key)
+        d[key] = "" if pct is None else f"{round(pct)}%"
+    d["fable"], old = fable_usage(stdin)
+    if not d["fable"] and isinstance(usage.get("fableUsage"), (int, float)):
+        d["fable"], old = f"{round(usage['fableUsage'])}%", True
+    if old:
+        d["stale"].add("fable")
+    d["fable"] = d["fable"] or ""
 
 
 def main():
@@ -291,9 +334,14 @@ def main():
     except OSError:
         busy = False
     try:
-        fable_at = datetime.fromisoformat(json.load(open(USAGE))["fableResetAt"]).timestamp()
-    except (OSError, ValueError, KeyError, TypeError):
+        usage = json.load(open(USAGE))
+    except (OSError, ValueError):
+        usage = {}
+    try:
+        fable_at = datetime.fromisoformat(usage["fableResetAt"]).timestamp()
+    except (ValueError, KeyError, TypeError):
         fable_at = None
+    usage_values(d, j, usage, stdin)
     print(render(j, d, first, tool, busy, fable_at, now))
 
 
