@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest a field, layout or behaviour for the panel
+labels: [enhancement]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What should the panel show or do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter, and what do you do today instead?

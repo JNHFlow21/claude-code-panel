@@ -52,6 +52,20 @@ curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/
 
 **会不会拖慢 Claude Code？** 不会。重画一次约 30 毫秒，约 1 秒的 ccstatusline 计算只在数据变化时运行，也不会阻塞 Claude 本身。
 
+## 配合 Claude Code 使用
+
+让 Claude Code 帮你安装和管理。先装上自带的 skill，然后直接说人话：
+
+```sh
+npx skills add risingjerry/claude-code-panel
+```
+
+- 「帮我安装 claude-code-panel。」
+- 「先给我预览一下 claude-code-panel 的状态栏，别改任何配置。」
+- 「卸载 claude-code-panel，恢复我原来的状态栏。」
+
+skill 会先备份 `~/.claude/settings.json`，只改 `statusLine` 这一项。详见 [`skills/claude-code-panel/SKILL.md`](skills/claude-code-panel/SKILL.md)。
+
 ## 卸载
 
 恢复 `~/.claude/settings.json.bak-cc-panel`（或删掉 `statusLine` 配置），再删除 `~/.local/bin/cc-panel` 和 `~/.cache/cc-panel`。
@@ -59,5 +73,7 @@ curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/
 ---
 
 觉得好用的话，点个 ⭐ 能让更多 Claude Code 用户看到它。
+
+[![Star History Chart](https://api.star-history.com/svg?repos=risingjerry/claude-code-panel&type=Date)](https://star-history.com/#risingjerry/claude-code-panel&Date)
 
 [MIT](LICENSE)

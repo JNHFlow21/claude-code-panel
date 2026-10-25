@@ -1,0 +1,27 @@
+name: Bug report
+description: The panel renders wrongly or does not appear
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: demo
+    attributes:
+      label: Output of `cc-panel --demo` (paste as text or a screenshot)
+  - type: input
+    id: versions
+    attributes:
+      label: Claude Code and ccstatusline versions
+      placeholder: "claude --version / ccstatusline --version"
+  - type: input
+    id: env
+    attributes:
+      label: OS, terminal and font
+      placeholder: "macOS 15, iTerm2, JetBrains Mono"
+  - type: markdown
+    attributes:
+      value: Please remove session IDs and any personal paths before posting.

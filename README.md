@@ -100,6 +100,20 @@ A redraw takes ~30 ms. The ~1 s ccstatusline run only happens when the session s
 **Does it work on Linux / with other fonts?**
 It needs Python 3.10+, a true-color terminal and a font with `▰ ▱ ▌ ✻ ↻` (most modern monospace fonts). Tested on macOS with Claude Code 2.1.302 and ccstatusline 2.2.32.
 
+## Use with Claude Code
+
+Let Claude Code install and manage the panel for you. Add the bundled skill, then ask in plain language:
+
+```sh
+npx skills add risingjerry/claude-code-panel
+```
+
+- "Install claude-code-panel for me."
+- "Show me what the claude-code-panel status line looks like before you change anything."
+- "Remove claude-code-panel and restore my old status line."
+
+The skill backs up `~/.claude/settings.json` first and only changes the `statusLine` key. See [`skills/claude-code-panel/SKILL.md`](skills/claude-code-panel/SKILL.md).
+
 ## Uninstall
 
 Restore `~/.claude/settings.json.bak-cc-panel` (or remove the `statusLine` block) and delete `~/.local/bin/cc-panel` and `~/.cache/cc-panel`.
@@ -118,5 +132,7 @@ Built on [ccstatusline](https://github.com/sirmalloc/ccstatusline) by sirmalloc.
 ---
 
 If this made your terminal nicer, a ⭐ helps other Claude Code users find it.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=risingjerry/claude-code-panel&type=Date)](https://star-history.com/#risingjerry/claude-code-panel&Date)
 
 [MIT](LICENSE)
