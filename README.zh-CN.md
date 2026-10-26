@@ -15,6 +15,7 @@
 ## 特点
 
 - **是一块，不是一条**：左侧色条把三行对齐的信息连成一个整体。
+- **其他订阅也能看**：Codex（ChatGPT）周额度和重置次数、X / Grok 共用周额度、DeepSeek 余额，在面板下方各占一行，用各自品牌色；一个快捷键就能隐藏或显示。
 - **额度放一列**：`5H`、`WK`、`FABLE` 三根格子条上下叠放，后面跟 `↻` 重置倒计时。
 - **快满了会提醒**：超过 70% 变琥珀色，超过 90% 变红。
 - **缓存倒计时**：`TTL` 显示提示缓存还剩多久过期（绿 → 琥珀 → 红 → `cold`），过期后下一条消息会贵很多。
@@ -40,11 +41,30 @@ curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/
 | `CACHE` | 提示缓存命中率 |
 | `TTL` | 提示缓存还剩多久过期 |
 | `5H` / `WK` / `FABLE` | 5 小时、每周、Fable 每周额度；`↻` 后是距离重置的时间 |
+| `GPT` | Codex 周额度和重置倒计时；`RESET` 是剩余的额度重置次数（有的话显示最早一次的过期时间） |
+| `Grok` | X 订阅的每周额度（Grok、Grok Build、Grok Bot、Cursor 共用），按 `Bot` / `Build` / `API` 拆分 |
+| `DeepSeek` | DeepSeek API 余额（`BAL`） |
 | `OUT` | 输出速度（token/秒） |
 | `TTFT` | 平均首段等待时间（首个 token 时间的上限） |
 | `TOOL` | 工具调用总耗时（并行调用只算一次） |
 | `TOK` | 本次会话累计 token |
 | `ID` | 会话 ID，可用于 `claude --resume` |
+
+## 其他订阅
+
+本机登录了对应命令行工具时，这几行会自动出现：
+
+- **GPT**：需要已登录的 `codex`。读的是 Codex 自带的 `app-server`，不消耗额度。
+- **Grok**：需要已登录的 `grok`（Grok Build）。只读它的登录；登录过期时这一行变灰，下次用 `grok` 会自动续上。
+- **DeepSeek**：要自己开启。在 `~/.config/cc-panel/config.json` 里写一条把 API 密钥输出到文件描述符 3 的命令，比如从密钥管理工具读：
+
+  ```json
+  {"deepseek_key_command": "my-secrets get --fd 3 DEEPSEEK_API_KEY"}
+  ```
+
+刷新在后台进行：全机同时只有一个刷新进程，Codex 每 5 分钟、Grok 每 10 分钟、DeepSeek 每 15 分钟查一次，失败后等待时间加倍（最长 1 小时），开再多会话也不会被限流。没更新上的数值显示为灰色。
+
+`cc-panel --toggle` 隐藏或显示这一块（隐藏时也不再后台刷新）。想绑全局快捷键：在 Raycast 设置 → Script Commands → Script Folders 里加入 `extras/raycast`（或它的副本），再给 *Toggle Claude Code Panel Subscriptions* 录一个快捷键。设置 `CC_PANEL_QUOTAS=0` 可整体关闭。
 
 ## 常见问题
 

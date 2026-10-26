@@ -14,18 +14,21 @@ def plain(s):
 
 class PanelTest(unittest.TestCase):
     def rows(self, now=1_800_000_000):
-        j, d, (first, tool), busy, fable_at = panel.demo()
-        return plain(panel.render(j, d, first, tool, busy, fable_at, now)).split("\n")
+        j, d, (first, tool), busy, fable_at, q = panel.demo()
+        return plain(panel.render(j, d, first, tool, busy, fable_at, now, q)).split("\n")
 
     def test_columns_align(self):
         rows = self.rows()
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 7)  # Claude block, hairline, GPT, Grok, DeepSeek
         for a, b in (("CTX", "CACHE"), ("CACHE", "TTL"), ("5H", "WK"), ("WK", "FABLE"), ("OUT", "TTFT"),
-                     ("TTFT", "TOOL"), ("TOK", "ID")):
+                     ("TTFT", "TOOL"), ("TOK", "ID"), ("CTX", "BAL")):
             ra = next(r for r in rows if re.search(rf"\b{a}\b", r))
             rb = next(r for r in rows if re.search(rf"\b{b}\b", r))
             self.assertEqual(re.search(rf"\b{a}\b", ra).start(), re.search(rf"\b{b}\b", rb).start(), (a, b))
         self.assertEqual(rows[0].index("Opus"), rows[1].index("$"))
+        bars = {m.start() for r in rows[4:6] for m in [re.search(r"[▰▱]{8}", r)]}
+        self.assertEqual(bars, {re.search(r"[▰▱]{8}", rows[0]).start()})  # GPT / Grok bars line up with CTX
+        self.assertEqual(rows[4].index("RESET"), rows[5].index("Bot"))
         self.assertTrue(all(r == r.rstrip() for r in rows))
 
     def test_heat_colors(self):
@@ -39,7 +42,8 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(panel.left(90000), "1d1h")
 
     def test_missing_ccstatusline_still_renders(self):
-        env = {**os.environ, "CC_PANEL_CCSTATUSLINE": "/nonexistent", "HOME": os.path.join(ROOT, ".test-home")}
+        env = {**os.environ, "CC_PANEL_CCSTATUSLINE": "/nonexistent", "HOME": os.path.join(ROOT, ".test-home"),
+               "CC_PANEL_QUOTAS": "0"}
         out = subprocess.run([sys.executable, SCRIPT], input=json.dumps({"session_id": "t"}), env=env,
                              capture_output=True, text=True, timeout=20)
         self.assertEqual(out.returncode, 0, out.stderr)
