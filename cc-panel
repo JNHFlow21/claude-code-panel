@@ -5,13 +5,17 @@ Claude Code pipes the status-line JSON on stdin. ccstatusline computes most valu
 (it is called with a generated data-only config); cc-panel adds session timing from
 the transcript and lays everything out in a grid. `cc-panel --demo` renders sample data.
 """
-import hashlib, json, os, re, shutil, subprocess, sys, time, unicodedata
+import hashlib, json, os, re, select, shutil, subprocess, sys, time, unicodedata, urllib.request
 from datetime import datetime
 
 CACHE = os.path.expanduser("~/.cache/cc-panel")
 USAGE = os.path.expanduser("~/.cache/ccstatusline/usage.json")
 CCSL_VERSION = "2.2.32"
 FABLE_EVERY, FABLE_BACKOFF = 900, 1800  # the usage API rate-limits hard: one fetch per window for all sessions
+QUOTA_EVERY = 300  # how often the panel may start a background refresh, across all sessions
+QUOTA_MAX_BACKOFF = 3600  # a failing or rate-limited source waits twice as long each time, up to this
+CONFIG = os.path.expanduser("~/.config/cc-panel/config.json")
+COLLAPSED = os.path.join(CACHE, "collapsed")
 SPIN = "·✢✳✶✻✽✻✶✳✢"
 WIDGETS = [
     ("model", "model", {}), ("effort", "thinking-effort", {}),
@@ -27,6 +31,7 @@ R, B = E + "0m", E + "1m"
 ORANGE, TAN, TEXT, DIM, SUB, GREEN, BLUE, WHITE, EMPTY = (
     "D97757", "D4A27F", "D6D2C4", "87867F", "5E5D59", "9DB07F", "6A9BCC", "FAF9F5", "4A4945")
 AMBER, RED, GLOW = "E5B567", "E06C75", "F0A784"
+OPENAI, GROK, DEEPSEEK = "10A37F", "FFFFFF", "4D6BFE"  # brand colors
 
 
 def fg(h):
@@ -212,6 +217,140 @@ def timing(path):
     return (dur(s["wait_ms"] / s["waits"]) if s["waits"] else None), dur(tool)
 
 
+# --- other subscriptions: Codex, Grok, DeepSeek -------------------------------
+# Fetched by a detached `cc-panel --refresh-quotas` at most every QUOTA_EVERY across all sessions;
+# the panel itself only reads ~/.cache/cc-panel/quotas.json. Credentials stay in memory.
+
+def codex_quota():
+    """Codex's own app-server reports the account's rate limits without spending any."""
+    if not shutil.which("codex"):
+        return None
+    p = subprocess.Popen(["codex", "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    try:
+        for m in ({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "cc-panel", "version": "0.2"}}},
+                  {"method": "initialized"}, {"id": 2, "method": "account/rateLimits/read"}):
+            p.stdin.write(json.dumps(m) + "\n")
+        p.stdin.flush()
+        end = time.time() + 20
+        while time.time() < end:
+            if not select.select([p.stdout], [], [], 1)[0]:
+                continue
+            line = p.stdout.readline()
+            if not line:
+                return None
+            m = json.loads(line)
+            if m.get("id") != 2:
+                continue
+            res = m.get("result") or {}
+            rl = res.get("rateLimits") or {}
+            wins = [{"pct": w["usedPercent"], "mins": w.get("windowDurationMins"), "reset": w.get("resetsAt")}
+                    for w in (rl.get("primary"), rl.get("secondary")) if w]
+            if not wins:
+                return None
+            rc = res.get("rateLimitResetCredits") or {}
+            exp = [c["expiresAt"] for c in rc.get("credits") or [] if c.get("status") == "available" and c.get("expiresAt")]
+            return {"windows": wins, "resets": rc.get("availableCount", 0),
+                    "reset_expires": min(exp) if exp else None}
+    finally:
+        p.kill()
+
+
+def grok_quota():
+    """The weekly pool shared by Grok, Grok Build, Grok Bot and Cursor (X subscription), read with
+    the Grok CLI's own login. An expired login is left for the Grok CLI to renew."""
+    try:
+        entry = next(iter(json.load(open(os.path.expanduser("~/.grok/auth.json"))).values()))
+        if datetime.fromisoformat(entry["expires_at"].replace("Z", "+00:00")).timestamp() < time.time():
+            return None
+        req = urllib.request.Request("https://cli-chat-proxy.grok.com/v1/billing?format=credits", headers={
+            "authorization": f"Bearer {entry['key']}", "x-xai-token-auth": "xai-grok-cli", "accept": "application/json"})
+        c = json.load(urllib.request.urlopen(req, timeout=10))["config"]
+    except (OSError, ValueError, KeyError, TypeError, StopIteration, AttributeError):
+        return None
+    return {"pct": c.get("creditUsagePercent") or 0,  # omitted at the start of a fresh week
+            "reset": datetime.fromisoformat(c["billingPeriodEnd"]).timestamp(),
+            "products": [[u["product"], u.get("usagePercent", 0)] for u in c.get("productUsage") or []]}
+
+
+def deepseek_quota():
+    """DeepSeek API balance. Needs `deepseek_key_command` in ~/.config/cc-panel/config.json:
+    a shell command that writes the API key to file descriptor 3."""
+    try:
+        cmd = json.load(open(CONFIG))["deepseek_key_command"]
+        key = subprocess.run(["sh", "-c", f"{cmd} 3>&1 1>/dev/null 2>/dev/null"], capture_output=True,
+                             text=True, timeout=10).stdout.strip()
+        if not key:
+            return None
+        req = urllib.request.Request("https://api.deepseek.com/user/balance",
+                                     headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
+        b = json.load(urllib.request.urlopen(req, timeout=10))["balance_infos"][0]
+    except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.TimeoutExpired):
+        return None
+    return {"total": float(b["total_balance"]), "currency": b["currency"]}
+
+
+PROVIDERS = (("gpt", codex_quota, 300), ("grok", grok_quota, 600), ("ds", deepseek_quota, 900))
+
+
+def refresh_quotas():
+    """One refresher at a time machine-wide; each source has its own interval and failure backoff."""
+    path, lock = os.path.join(CACHE, "quotas.json"), os.path.join(CACHE, "quotas.lock")
+    try:
+        if time.time() - os.path.getmtime(lock) > 120:  # left behind by a killed refresher
+            os.remove(lock)
+    except OSError:
+        pass
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return
+    try:
+        for name, fetch, every in PROVIDERS:
+            try:
+                s = json.load(open(path))
+            except (OSError, ValueError):
+                s = {}
+            st = s.get(f"{name}_next", {})
+            if time.time() < st.get("at", 0):
+                continue
+            try:
+                v = fetch()
+            except Exception:
+                v = None
+            try:
+                s = json.load(open(path))
+            except (OSError, ValueError):
+                s = {}
+            if v:
+                s[name] = {**v, "ok": time.time()}
+                wait = every
+            else:  # a failed source keeps its last value
+                wait = min(max(st.get("wait", every) * 2, every * 2), QUOTA_MAX_BACKOFF)
+            s[f"{name}_next"] = {"at": time.time() + wait, "wait": wait}
+            write_json(path, s)
+    finally:
+        os.close(fd)
+        os.remove(lock)
+
+
+def quotas(now):
+    if os.environ.get("CC_PANEL_QUOTAS") == "0":
+        return {}
+    path = os.path.join(CACHE, "quotas.json")
+    try:
+        s = json.load(open(path))
+    except (OSError, ValueError):
+        s = {}
+    if now - s.get("tried", 0) >= QUOTA_EVERY:
+        s["tried"] = now
+        write_json(path, s)  # claim the window first so other sessions skip it
+        subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "--refresh-quotas"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    return s
+
+
 # --- layout -------------------------------------------------------------------
 
 def demo():
@@ -221,10 +360,53 @@ def demo():
          "rate_limits": {"five_hour": {"resets_at": now + 5400}, "seven_day": {"resets_at": now + 190000}}}
     d = dict(model="Opus 5.5", effort="high", ctx="38%", ctxlen="380k", five="64%", week="23%", fable="81%",
              clock="42m", cost="$3.8217", cache="98.7%", speed="182 t/s", tokens="12.4M", sid=j["session_id"])
-    return j, d, ("6.1s", "48.3s"), True, now + 160000
+    q = {"gpt": {"windows": [{"pct": 31, "mins": 10080, "reset": now + 420000}], "resets": 2,
+                 "reset_expires": now + 900000, "ok": now},
+         "grok": {"pct": 8, "reset": now + 460000, "ok": now,
+                  "products": [["GrokBot", 5], ["GrokBuild", 2], ["Api", 1]]},
+         "ds": {"total": 315.7, "currency": "CNY", "ok": now}}
+    return j, d, ("6.1s", "48.3s"), True, now + 160000, q
 
 
-def render(j, d, first, tool, busy, fable_at, now):
+def quota_rows(q, now):
+    """One row per other subscription: (brand, fresh, name, (label, main value), secondary text)."""
+    rows = []
+    every = {name: e for name, _, e in PROVIDERS}
+
+    def gauge(pct, brand, resets_at):
+        color = heat(f"{pct}%", brand)
+        tail = f" {lab('↻')}{fg(TEXT)}{left(resets_at - now)}{R}" if resets_at and resets_at > now else ""
+        return f"{bar(f'{pct}%', color)} {val(f'{round(pct)}%'.rjust(4), color)}{tail}"
+
+    span = lambda mins: "5H" if mins == 300 else "WK" if mins == 10080 else f"{mins // 60}H"
+    if v := q.get("gpt"):
+        wins = sorted(v["windows"], key=lambda w: w.get("mins") or 0)
+        n = v.get("resets") or 0
+        extra = [f"{lab(span(w.get('mins') or 0))} {val(str(round(w['pct'])) + '%', TEXT, False)}"
+                 for w in wins[:-1]]
+        extra.append(f"{lab('RESET')} {val(str(n), OPENAI if n else TEXT, bool(n))}")
+        if n and v.get("reset_expires"):
+            extra.append(f"{lab('first expires in')} {val(left(v['reset_expires'] - now), TEXT, False)}")
+        rows.append((OPENAI, v, "GPT", (span(wins[-1].get("mins") or 0),
+                     gauge(wins[-1]["pct"], OPENAI, wins[-1].get("reset"))), f" {fg(SUB)}·{R} ".join(extra)))
+    if v := q.get("grok"):
+        alias = {"GrokBot": "Bot", "GrokBuild": "Build", "Api": "API"}
+        split = f" {fg(SUB)}·{R} ".join(f"{lab(alias.get(p, p))} {val(f'{round(u)}%', TEXT, False)}"
+                                     for p, u in v.get("products") or [])
+        rows.append((GROK, v, "Grok", ("WK", gauge(v["pct"], GROK, v.get("reset"))), split))
+    if v := q.get("ds"):
+        sym = {"CNY": "¥", "USD": "$"}.get(v.get("currency"), "")
+        total = v["total"]
+        color = RED if total < 5 else AMBER if total < 20 else DEEPSEEK
+        rows.append((DEEPSEEK, v, "DeepSeek", ("BAL", val(f"{sym}{total:.2f}", color)), ""))
+    out = []
+    for name, (brand, v, *cells) in zip([k for k in ("gpt", "grok", "ds") if q.get(k)], rows):
+        fresh = now - v.get("ok", 0) < 3 * every[name] + 60
+        out.append((brand if fresh else DIM, fresh, *cells))
+    return out
+
+
+def render(j, d, first, tool, busy, fable_at, now, q=None, collapsed=False):
     tick = int(now)
     star = SPIN[tick % len(SPIN)] if busy else "✻"
     side = fg(GLOW if busy and tick % 2 else ORANGE) + "▌" + R
@@ -260,14 +442,31 @@ def render(j, d, first, tool, busy, fable_at, now):
         [("OUT", val(d["speed"], BLUE)), ("TTFT", val(first)), ("TOOL", val(tool))],
         [("TOK", val(d["tokens"])), ("ID", fg(SUB) + d["sid"] + R), ("", "")],
     ]
-    rows = [[], [], []]
+    rows, starts, lws = [[], [], []], [], []
     for col in cols:
-        lw = max(len(l) for l, _ in col)
+        starts.append(sum(width(c) + 3 for c in rows[0]))
+        lw = max(width(l) for l, _ in col)
+        lws.append(lw)
         cells = [(pad(lab(l), lw) + " " if lw and (l or v) else "") + v for l, v in col]
         cw = max(width(c) for c, (l, _) in zip(cells, col) if l != "ID")
         for r, c in zip(rows, cells):
             r.append(pad(c, cw))
-    return "\n".join(f"{side}  " + "   ".join(r).rstrip() for r in rows)
+    lines = [f"{side}  " + "   ".join(r).rstrip() for r in rows]
+
+    # other subscriptions: a block below a hairline, one row each with its own brand rail, on the same grid
+    others = [] if collapsed else quota_rows(q or {}, now)
+    if others:
+        lines.append("   " + fg(EMPTY) + "─" * (max(width(l) for l in lines) - 3) + R)
+    # the name sits under the model and the main value under CTX; the secondary text gets its own column
+    mains = [pad(f"{fg(brand)}{B}●{R} {fg(brand)}{B}{name}{R}", starts[1]) + pad(lab(l), lws[1]) + " " + v
+             for brand, _, name, (l, v), _ in others]
+    second = max((width(m) for m in mains), default=0) + 3
+    for (brand, fresh, *_, text), main in zip(others, mains):
+        line = (pad(main, second) + text if text else main).rstrip()
+        if not fresh:
+            line = fg(DIM) + re.sub(r"\x1b\[[0-9;]*m", "", line) + R
+        lines.append(f"{fg(brand)}▌{R}  " + line)
+    return "\n".join(lines)
 
 
 def fable_usage(stdin):
@@ -317,9 +516,20 @@ def usage_values(d, j, usage, stdin):
 
 def main():
     now = time.time()
+    if "--refresh-quotas" in sys.argv:
+        refresh_quotas()
+        return
+    if "--toggle" in sys.argv:  # bind to a hotkey: show or hide the other-subscription rows
+        if os.path.exists(COLLAPSED):
+            os.remove(COLLAPSED)
+        else:
+            os.makedirs(CACHE, exist_ok=True)
+            open(COLLAPSED, "w").close()
+        return
+    collapsed = os.path.exists(COLLAPSED) or "--collapsed" in sys.argv
     if "--demo" in sys.argv:
-        j, d, (first, tool), busy, fable_at = demo()
-        print(render(j, d, first, tool, busy, fable_at, now))
+        j, d, (first, tool), busy, fable_at, q = demo()
+        print(render(j, d, first, tool, busy, fable_at, now, q, collapsed))
         return
     stdin = sys.stdin.read()
     try:
@@ -342,7 +552,7 @@ def main():
     except (ValueError, KeyError, TypeError):
         fable_at = None
     usage_values(d, j, usage, stdin)
-    print(render(j, d, first, tool, busy, fable_at, now))
+    print(render(j, d, first, tool, busy, fable_at, now, {} if collapsed else quotas(now), collapsed))
 
 
 if __name__ == "__main__":

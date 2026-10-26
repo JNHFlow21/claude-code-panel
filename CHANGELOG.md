@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 — 2026-10-26
+
+- Other subscriptions under the panel, one brand-colored row each: Codex weekly usage and rate-limit reset credits (`GPT`), the X / Grok weekly pool split by product (`Grok`), and the DeepSeek balance (`DeepSeek`, opt-in via `deepseek_key_command`).
+- Background refresh with a machine-wide lock, per-source intervals (5 / 10 / 15 min) and failure backoff up to 1 h; stale values grey out.
+- `cc-panel --toggle` hides or shows the block; `extras/raycast` script command for a global hotkey.
+
 ## 0.1.0 — 2026-10-25
 
 First public release.
