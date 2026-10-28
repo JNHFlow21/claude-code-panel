@@ -67,7 +67,7 @@ Then add the `statusLine` block above to `~/.claude/settings.json` (use the abso
 |---|---|
 | `✻ Opus 5.5 high` | Model and reasoning effort |
 | `$3.8217  42m` | Session cost (API-price estimate, same as `/cost`) and session wall time |
-| `CTX` | Context window used, with token count |
+| `CTX` | Context used against the auto-compact window (`autoCompactWindow` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the model window), with token count; 100% means compaction is due |
 | `CACHE` | Prompt-cache hit rate |
 | `TTL` | Time until the prompt cache expires |
 | `5H` / `WK` / `FABLE` | 5-hour, weekly and Fable weekly usage, `↻` = time until reset |

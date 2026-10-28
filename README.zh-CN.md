@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/
 |---|---|
 | `✻ Opus 5.5 high` | 模型和推理档位 |
 | `$3.8217  42m` | 本次会话花费（按 API 价格估算，和 `/cost` 一致）和时长 |
-| `CTX` | 上下文占用和 token 数 |
+| `CTX` | 上下文占用和 token 数；分母是自动压缩窗口（`autoCompactWindow` 或 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`，没设就用模型上限），100% 即将压缩 |
 | `CACHE` | 提示缓存命中率 |
 | `TTL` | 提示缓存还剩多久过期 |
 | `5H` / `WK` / `FABLE` | 5 小时、每周、Fable 每周额度；`↻` 后是距离重置的时间 |

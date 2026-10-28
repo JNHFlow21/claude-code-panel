@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `CTX` is measured against the auto-compact window (`autoCompactWindow` setting or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, read on every redraw), so 100% means compaction is due; without one it falls back to the model window.
+
 ## 0.2.0 — 2026-10-26
 
 - Other subscriptions under the panel, one brand-colored row each: Codex weekly usage and rate-limit reset credits (`GPT`), the X / Grok weekly pool split by product (`Grok`), and the DeepSeek balance (`DeepSeek`, opt-in via `deepseek_key_command`).
