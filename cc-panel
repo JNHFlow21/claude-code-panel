@@ -66,7 +66,8 @@ def heat(pct, color):
 
 
 def bar(pct, color, n=8):
-    k = min(n, round(number(pct) / 100 * n))
+    v = number(pct)
+    k = min(n, max(round(v / 100 * n), 1 if v > 0 else 0))  # any use lights one cell
     return fg(color) + "▰" * k + fg(EMPTY) + "▱" * (n - k) + R
 
 
