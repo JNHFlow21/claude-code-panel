@@ -469,31 +469,41 @@ def render(j, d, first, tool, busy, fable_at, now, q=None, collapsed=False):
     return "\n".join(lines)
 
 
-def fable_usage(stdin):
-    """Fable weekly usage is the one value Claude Code does not pass in, so it needs the usage API.
-    Fetch it at most once per FABLE_EVERY across all sessions and keep the last good value."""
-    path = os.path.join(CACHE, "fable.json")
+def read_fable():
     try:
-        s = json.load(open(path))
+        return json.load(open(os.path.join(CACHE, "fable.json")))
     except (OSError, ValueError):
-        s = {}
-    now = time.time()
+        return {}
+
+
+def fable_usage(now):
+    """Fable weekly usage is the one value Claude Code does not pass in, so it needs the usage API.
+    A detached `cc-panel --refresh-fable` fetches it at most once per FABLE_EVERY across all sessions:
+    the fetch outlasts the 1 s refresh, and Claude Code kills a status line that is still running."""
+    s = read_fable()
     if now - s.get("tried", 0) >= s.get("wait", FABLE_EVERY):
         s["tried"] = now
-        write_json(path, s)  # claim the window first so other sessions skip it
-        cfg = data_config([("fable", "fable-weekly-usage", {"numberFormat": {"style": "whole"}})], "ccstatusline-fable.json")
-        try:
-            out = subprocess.run(ccstatusline_cmd() + ["--config", cfg], input=stdin, capture_output=True,
-                                 text=True, env={**os.environ, "CCSTATUSLINE_WIDTH": "1000"}, timeout=10).stdout
-        except (OSError, subprocess.TimeoutExpired):
-            out = ""
-        out = re.sub(r"\x1b\[[0-9;]*m", "", out).strip()
-        if re.fullmatch(r"[\d.]+%", out):
-            s.update(pct=out, ok=now, wait=FABLE_EVERY)
-        else:
-            s["wait"] = FABLE_BACKOFF
-        write_json(path, s)
+        write_json(os.path.join(CACHE, "fable.json"), s)  # claim the window first so other sessions skip it
+        subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "--refresh-fable"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
     return s.get("pct"), now - s.get("ok", 0) > 2 * FABLE_BACKOFF
+
+
+def refresh_fable():
+    cfg = data_config([("fable", "fable-weekly-usage", {"numberFormat": {"style": "whole"}})], "ccstatusline-fable.json")
+    try:
+        out = subprocess.run(ccstatusline_cmd() + ["--config", cfg], input="{}", capture_output=True,
+                             text=True, env={**os.environ, "CCSTATUSLINE_WIDTH": "1000"}, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    out = re.sub(r"\x1b\[[0-9;]*m", "", out).strip()
+    s = read_fable()
+    if re.fullmatch(r"[\d.]+%", out):
+        s.update(pct=out, ok=time.time(), wait=FABLE_EVERY)
+    else:
+        s["wait"] = FABLE_BACKOFF
+    write_json(os.path.join(CACHE, "fable.json"), s)
 
 
 def compact_window(j):
@@ -524,7 +534,7 @@ def ctx_value(d, j):
     d["ctx"] = f"{min(round(used / window * 100), 100)}%"
 
 
-def usage_values(d, j, usage, stdin):
+def usage_values(d, j, usage):
     """5H/WK come straight from Claude Code's rate_limits (no API call); a session that has not
     sent a request yet lacks them, so it shows the last cached value greyed out."""
     rl, d["stale"] = j.get("rate_limits") or {}, set()
@@ -534,7 +544,7 @@ def usage_values(d, j, usage, stdin):
             pct = usage[field]
             d["stale"].add(key)
         d[key] = "" if pct is None else f"{round(pct)}%"
-    d["fable"], old = fable_usage(stdin)
+    d["fable"], old = fable_usage(time.time())
     if not d["fable"] and isinstance(usage.get("fableUsage"), (int, float)):
         d["fable"], old = f"{round(usage['fableUsage'])}%", True
     if old:
@@ -546,6 +556,9 @@ def main():
     now = time.time()
     if "--refresh-quotas" in sys.argv:
         refresh_quotas()
+        return
+    if "--refresh-fable" in sys.argv:
+        refresh_fable()
         return
     if "--toggle" in sys.argv:  # bind to a hotkey: show or hide the other-subscription rows
         if os.path.exists(COLLAPSED):
@@ -580,7 +593,7 @@ def main():
     except (ValueError, KeyError, TypeError):
         fable_at = None
     ctx_value(d, j)
-    usage_values(d, j, usage, stdin)
+    usage_values(d, j, usage)
     print(render(j, d, first, tool, busy, fable_at, now, {} if collapsed else quotas(now), collapsed))
 
 
