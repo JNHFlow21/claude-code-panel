@@ -496,6 +496,34 @@ def fable_usage(stdin):
     return s.get("pct"), now - s.get("ok", 0) > 2 * FABLE_BACKOFF
 
 
+def compact_window(j):
+    """The auto-compact window Claude Code enforces: env first, then local > project > user settings."""
+    env = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+    if env and env.isdigit():
+        return int(env)
+    root = (j.get("workspace") or {}).get("project_dir") or j.get("cwd") or ""
+    for path in (os.path.join(root, ".claude", "settings.local.json"), os.path.join(root, ".claude", "settings.json"),
+                 os.path.expanduser("~/.claude/settings.json")):
+        try:
+            v = json.load(open(path)).get("autoCompactWindow")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(v, int) and v > 0:
+            return v
+    return None
+
+
+def ctx_value(d, j):
+    """CTX is measured against the auto-compact window, so 100% means compaction is due."""
+    cw = j.get("context_window") or {}
+    u, size = cw.get("current_usage"), cw.get("context_window_size")
+    if not isinstance(u, dict) or not isinstance(size, (int, float)) or size <= 0:
+        return
+    used = sum(u.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    window = min(size, compact_window(j) or size)
+    d["ctx"] = f"{min(round(used / window * 100), 100)}%"
+
+
 def usage_values(d, j, usage, stdin):
     """5H/WK come straight from Claude Code's rate_limits (no API call); a session that has not
     sent a request yet lacks them, so it shows the last cached value greyed out."""
@@ -551,6 +579,7 @@ def main():
         fable_at = datetime.fromisoformat(usage["fableResetAt"]).timestamp()
     except (ValueError, KeyError, TypeError):
         fable_at = None
+    ctx_value(d, j)
     usage_values(d, j, usage, stdin)
     print(render(j, d, first, tool, busy, fable_at, now, {} if collapsed else quotas(now), collapsed))
 

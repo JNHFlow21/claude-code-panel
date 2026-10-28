@@ -1,4 +1,4 @@
-import importlib.util, json, os, re, subprocess, sys, unittest
+import importlib.util, json, os, re, subprocess, sys, unittest, unittest.mock
 from importlib.machinery import SourceFileLoader
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +30,18 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(bars, {re.search(r"[▰▱]{8}", rows[0]).start()})  # GPT / Grok bars line up with CTX
         self.assertEqual(rows[4].index("RESET"), rows[5].index("Bot"))
         self.assertTrue(all(r == r.rstrip() for r in rows))
+
+    def test_ctx_follows_compact_window(self):
+        j = {"cwd": "/nonexistent", "context_window": {"context_window_size": 1_000_000, "current_usage": {
+            "input_tokens": 2, "cache_creation_input_tokens": 4_998, "cache_read_input_tokens": 320_000}}}
+        for env, want in (("650000", "50%"), ("2000000", "32%"), ("100000", "100%")):
+            d = {}
+            with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": env}):
+                panel.ctx_value(d, j)
+            self.assertEqual(d["ctx"], want, env)
+        d = {"ctx": "7%"}
+        panel.ctx_value(d, {})
+        self.assertEqual(d["ctx"], "7%")  # no usage yet: keep ccstatusline's value
 
     def test_heat_colors(self):
         self.assertEqual(panel.heat("69%", "X"), "X")
