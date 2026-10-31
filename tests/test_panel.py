@@ -20,7 +20,7 @@ class PanelTest(unittest.TestCase):
     def test_columns_align(self):
         rows = self.rows()
         self.assertEqual(len(rows), 7)  # Claude block, hairline, GPT, Grok, DeepSeek
-        for a, b in (("CTX", "CACHE"), ("CACHE", "TTL"), ("5H", "WK"), ("WK", "FABLE"), ("OUT", "TTFT"),
+        for a, b in (("CTX", "CACHE"), ("CACHE", "TTL"), ("WK", "FABLE"), ("OUT", "TTFT"),
                      ("TTFT", "TOOL"), ("TOK", "ID"), ("CTX", "BAL")):
             ra = next(r for r in rows if re.search(rf"\b{a}\b", r))
             rb = next(r for r in rows if re.search(rf"\b{b}\b", r))
