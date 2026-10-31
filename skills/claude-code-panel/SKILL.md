@@ -1,6 +1,6 @@
 ---
 name: claude-code-panel
-description: Install, configure or remove claude-code-panel, a Claude Code status line that shows context, 5-hour / weekly rate limits with reset countdowns, prompt-cache TTL, cost and session ID as an aligned animated panel. Use when the user wants a better Claude Code status line, wants to see rate limits or cache TTL in the terminal, mentions cc-panel or ccstatusline, or wants the panel removed. 状态栏 / 用量面板 / 限额倒计时.
+description: Install, configure or remove claude-code-panel, a Claude Code status line that shows context, weekly rate limits with reset countdowns, prompt-cache TTL, cost and session ID as an aligned animated panel. Use when the user wants a better Claude Code status line, wants to see rate limits or cache TTL in the terminal, mentions cc-panel or ccstatusline, or wants the panel removed. 状态栏 / 用量面板 / 限额倒计时.
 ---
 
 # claude-code-panel
@@ -50,7 +50,7 @@ Then back up `~/.claude/settings.json` and add the `statusLine` block above, usi
 
 ## Reading the panel
 
-`5H` / `WK` / `FABLE` = usage bars with `↻` time to reset (amber at 70%, red at 90%); `TTL` = prompt-cache time left (red or `cold` means the next message is full price); `CTX` = context used; `ID` = session id for `claude --resume`. The permission-mode row (`bypass permissions`) is drawn by Claude Code itself and cannot be shown by the panel.
+`WK` / `FABLE` = usage bars with `↻` time to reset (amber at 70%, red at 90%); `TTL` = prompt-cache time left (red or `cold` means the next message is full price); `CTX` = context used; `ID` = session id for `claude --resume`. The permission-mode row (`bypass permissions`) is drawn by Claude Code itself and cannot be shown by the panel.
 
 ## Troubleshooting
 

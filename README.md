@@ -4,7 +4,7 @@
 
 **Turn the Claude Code status line into a live, aligned dashboard panel.**
 
-Context, 5-hour / weekly / Fable rate limits with reset countdowns, prompt-cache TTL, cost, speed and session ID — in one glance, animated while Claude works.
+Context, weekly / Fable rate limits with reset countdowns, prompt-cache TTL, cost, speed and session ID — in one glance, animated while Claude works.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-D97757.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-6A9BCC.svg)
@@ -22,7 +22,7 @@ English · [简体中文](README.zh-CN.md)
 The default Claude Code status line is one long row of loosely spaced text. **claude-code-panel** draws it as a compact three-row panel: every label and value sits on a grid, related numbers are stacked in the same column, and the panel moves only when something is happening.
 
 - **One block, not a bar** — an accent rail ties three aligned rows together.
-- **All your limits in one column** — `5H`, `WK` and `FABLE` usage bars stacked, each with a `↻` reset countdown.
+- **All your limits in one column** — `WK` and `FABLE` usage bars stacked, each with a `↻` reset countdown.
 - **Your other subscriptions too** — Codex (ChatGPT) weekly usage and reset credits, the X / Grok weekly pool and your DeepSeek balance, each on its own brand-colored row under the panel. Hide or show them with one hotkey.
 - **Warns before you hit the wall** — bars turn amber at 70% and red at 90%.
 - **Prompt-cache TTL countdown** — see how long the cache stays warm (green → amber → red → `cold`), so you know when the next message will be expensive.
@@ -70,7 +70,7 @@ Then add the `statusLine` block above to `~/.claude/settings.json` (use the abso
 | `CTX` | Context used against the auto-compact window (`autoCompactWindow` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the model window), with token count; 100% means compaction is due |
 | `CACHE` | Prompt-cache hit rate |
 | `TTL` | Time until the prompt cache expires |
-| `5H` / `WK` / `FABLE` | 5-hour, weekly and Fable weekly usage, `↻` = time until reset |
+| `WK` / `FABLE` | Weekly and Fable weekly usage, `↻` = time until reset |
 | `GPT` | Codex weekly usage with `↻` reset countdown; `RESET` = rate-limit reset credits left (when you have one, when the first expires) |
 | `Grok` | X subscription weekly pool, shared by Grok, Grok Build, Grok Bot and Cursor, split by product (`Bot` / `Build` / `API`) |
 | `DeepSeek` | DeepSeek API balance (`BAL`) |
@@ -106,7 +106,7 @@ Claude Code pipes a JSON snapshot of the session to the status-line command. `cc
 Set `statusLine.command` in `~/.claude/settings.json` to any script that reads JSON on stdin and prints text. `cc-panel` is such a script; `refreshInterval: 1` makes Claude Code re-run it every second so countdowns and animation stay live.
 
 **Can the status line show my Claude rate limits and when they reset?**
-Yes. `5H` and `WK` come straight from the `rate_limits` field Claude Code sends; `FABLE` comes from ccstatusline's usage fetch (the same source as `/usage`). Each shows a `↻` countdown to its reset.
+Yes. `WK` comes straight from the `rate_limits` field Claude Code sends; `FABLE` comes from ccstatusline's usage fetch (the same source as `/usage`). Each shows a `↻` countdown to its reset.
 
 **Why does the cache TTL matter?**
 Cached prompt tokens are much cheaper. When `TTL` turns red or `cold`, the next message rebuilds the cache at full price — a good moment to send it soon or to `/compact` first.

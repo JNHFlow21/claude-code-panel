@@ -16,7 +16,7 @@
 
 - **是一块，不是一条**：左侧色条把三行对齐的信息连成一个整体。
 - **其他订阅也能看**：Codex（ChatGPT）周额度和重置次数、X / Grok 共用周额度、DeepSeek 余额，在面板下方各占一行，用各自品牌色；一个快捷键就能隐藏或显示。
-- **额度放一列**：`5H`、`WK`、`FABLE` 三根格子条上下叠放，后面跟 `↻` 重置倒计时。
+- **额度放一列**：`WK`、`FABLE` 两根格子条上下叠放，后面跟 `↻` 重置倒计时。
 - **快满了会提醒**：超过 70% 变琥珀色，超过 90% 变红。
 - **缓存倒计时**：`TTL` 显示提示缓存还剩多久过期（绿 → 琥珀 → 红 → `cold`），过期后下一条消息会贵很多。
 - **干活时会动**：Claude 工作时 `✻` 转圈、色条呼吸；空闲时静止。
@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/risingjerry/claude-code-panel/main/
 | `CTX` | 上下文占用和 token 数；分母是自动压缩窗口（`autoCompactWindow` 或 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`，没设就用模型上限），100% 即将压缩 |
 | `CACHE` | 提示缓存命中率 |
 | `TTL` | 提示缓存还剩多久过期 |
-| `5H` / `WK` / `FABLE` | 5 小时、每周、Fable 每周额度；`↻` 后是距离重置的时间 |
+| `WK` / `FABLE` | 每周、Fable 每周额度；`↻` 后是距离重置的时间 |
 | `GPT` | Codex 周额度和重置倒计时；`RESET` 是剩余的额度重置次数（有的话显示最早一次的过期时间） |
 | `Grok` | X 订阅的每周额度（Grok、Grok Build、Grok Bot、Cursor 共用），按 `Bot` / `Build` / `API` 拆分 |
 | `DeepSeek` | DeepSeek API 余额（`BAL`） |
