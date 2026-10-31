@@ -31,7 +31,7 @@ R, B = E + "0m", E + "1m"
 ORANGE, TAN, TEXT, DIM, SUB, GREEN, BLUE, WHITE, EMPTY = (
     "D97757", "D4A27F", "D6D2C4", "87867F", "5E5D59", "9DB07F", "6A9BCC", "FAF9F5", "4A4945")
 AMBER, RED, GLOW = "E5B567", "E06C75", "F0A784"
-OPENAI, GROK, DEEPSEEK = "10A37F", "FFFFFF", "4D6BFE"  # brand colors
+OPENAI, GROK, DEEPSEEK, GOOGLE = "7DB89E", "E8E4D8", "A99CE3", "8FB3E8"  # brand hues, softened for the warm palette
 
 
 def fg(h):
@@ -218,7 +218,7 @@ def timing(path):
     return (dur(s["wait_ms"] / s["waits"]) if s["waits"] else None), dur(tool)
 
 
-# --- other subscriptions: Codex, Grok, DeepSeek -------------------------------
+# --- other subscriptions: Codex, Grok, Google, DeepSeek ------------------------------
 # Fetched by a detached `cc-panel --refresh-quotas` at most every QUOTA_EVERY across all sessions;
 # the panel itself only reads ~/.cache/cc-panel/quotas.json. Credentials stay in memory.
 
@@ -291,7 +291,34 @@ def deepseek_quota():
     return {"total": float(b["total_balance"]), "currency": b["currency"]}
 
 
-PROVIDERS = (("gpt", codex_quota, 300), ("grok", grok_quota, 600), ("ds", deepseek_quota, 900))
+def google_quota():
+    """Google AI subscription limits, read with the Antigravity CLI's own login. `agy -p /usage` only
+    reads quotas; piped, it prints one `group<TAB>limit<TAB>remaining%<TAB>UTC reset` line per limit."""
+    if not shutil.which("agy"):
+        return None
+    try:
+        out = subprocess.run(["agy", "-p", "/usage"], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, cwd=CACHE, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    limits = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4 or not parts[2].endswith("%"):
+            continue
+        group, name, left_pct, reset = parts
+        try:
+            used = 100 - float(left_pct[:-1])
+            at = datetime.fromisoformat(reset.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        span = "5H" if "Five Hour" in name else "WK" if "Weekly" in name else name
+        limits.append([group, span, used, at])
+    return {"limits": limits} if limits else None
+
+
+PROVIDERS = (("gpt", codex_quota, 300), ("grok", grok_quota, 600), ("google", google_quota, 600),
+             ("ds", deepseek_quota, 900))
 
 
 def refresh_quotas():
@@ -365,6 +392,10 @@ def demo():
                  "reset_expires": now + 900000, "ok": now},
          "grok": {"pct": 8, "reset": now + 460000, "ok": now,
                   "products": [["GrokBot", 5], ["GrokBuild", 2], ["Api", 1]]},
+         "google": {"limits": [["Gemini Models", "WK", 12, now + 380000], ["Gemini Models", "5H", 40, now + 9000],
+                               ["Claude and GPT models", "WK", 6, now + 380000],
+                               ["Claude and GPT models", "5H", 18, now + 9000], ["Gemini 4 Argon", "WK", 21, now + 380000]],
+                    "ok": now},
          "ds": {"total": 315.7, "currency": "CNY", "ok": now}}
     return j, d, ("6.1s", "48.3s"), True, now + 160000, q
 
@@ -395,13 +426,28 @@ def quota_rows(q, now):
         split = f" {fg(SUB)}·{R} ".join(f"{lab(alias.get(p, p))} {val(f'{round(u)}%', TEXT, False)}"
                                      for p, u in v.get("products") or [])
         rows.append((GROK, v, "Grok", ("WK", gauge(v["pct"], GROK, v.get("reset"))), split))
+    if v := q.get("google"):
+        # Argon has its own weekly cap on top of the Gemini pool and runs out first, so it leads the row
+        short = {"Gemini Models": "Gemini", "Claude and GPT models": "Opus·Sonnet"}
+        lims = v["limits"]
+        main = (next((x for x in lims if "Argon" in x[0] and x[1] == "WK"), None)
+                or next((x for x in lims if x[0] == "Gemini Models" and x[1] == "WK"), lims[0]))
+        groups = {}
+        for x in sorted(lims, key=lambda x: x[1] != "5H"):  # a per-model cap is shown only once it has been used
+            if x is not main and (x[0] in short or x[2] > 0):
+                groups.setdefault(x[0], []).append(x)
+        extra = [lab(short.get(g, g)) + " "
+                 + " ".join(f"{lab(s)} {val(f'{round(u)}%', heat(f'{u}%', TEXT), False)}" for _, s, u, _ in xs)
+                 for g, xs in groups.items()]
+        rows.append((GOOGLE, v, "Argon" if "Argon" in main[0] else "Google", (main[1], gauge(main[2], GOOGLE, main[3])),
+                     f" {fg(SUB)}·{R} ".join(extra)))
     if v := q.get("ds"):
         sym = {"CNY": "¥", "USD": "$"}.get(v.get("currency"), "")
         total = v["total"]
         color = RED if total < 5 else AMBER if total < 20 else DEEPSEEK
         rows.append((DEEPSEEK, v, "DeepSeek", ("BAL", val(f"{sym}{total:.2f}", color)), ""))
     out = []
-    for name, (brand, v, *cells) in zip([k for k in ("gpt", "grok", "ds") if q.get(k)], rows):
+    for name, (brand, v, *cells) in zip([k for k in ("gpt", "grok", "google", "ds") if q.get(k)], rows):
         fresh = now - v.get("ok", 0) < 3 * every[name] + 60
         out.append((brand if fresh else DIM, fresh, *cells))
     return out

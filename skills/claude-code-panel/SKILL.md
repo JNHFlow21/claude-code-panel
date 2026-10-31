@@ -55,7 +55,7 @@ Then back up `~/.claude/settings.json` and add the `statusLine` block above, usi
 ## Troubleshooting
 
 - Blank or garbled panel: font lacks `▰ ▱ ▌ ✻ ↻`, or the terminal is not true-color. Run `cc-panel --demo` outside Claude Code to compare.
-- `GPT` / `Grok` / `DeepSeek` rows missing: the matching CLI (`codex`, `grok`) is not logged in, or DeepSeek has no `deepseek_key_command` in `~/.config/cc-panel/config.json` (a command that writes the key to fd 3; never put the key itself there). Grey = stale value, refreshed in the background. `cc-panel --toggle` hides or shows them; `CC_PANEL_QUOTAS=0` disables them.
+- `GPT` / `Grok` / `Argon` / `DeepSeek` rows missing: the matching CLI (`codex`, `grok`, `agy`) is not logged in, or DeepSeek has no `deepseek_key_command` in `~/.config/cc-panel/config.json` (a command that writes the key to fd 3; never put the key itself there). Grey = stale value, refreshed in the background. `cc-panel --toggle` hides or shows them; `CC_PANEL_QUOTAS=0` disables them.
 - `FABLE` row missing or stale: the usage API is rate-limited and fetched at most every 15 minutes; wait.
 - First render slow: ccstatusline missing, so `npx` is used. Run `npm install -g ccstatusline@2.2.32`.
 

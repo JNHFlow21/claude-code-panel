@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `Argon` row: Google AI subscription limits from the Antigravity CLI (`agy -p /usage`, spends no quota) — the Gemini 4 Argon weekly cap as the bar (it runs out before the shared pool), then the Gemini and Opus·Sonnet pools; refreshed every 10 min.
 - `CTX` is measured against the auto-compact window (`autoCompactWindow` setting or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, read on every redraw), so 100% means compaction is due; without one it falls back to the model window.
 
 ## 0.2.0 — 2026-10-26
