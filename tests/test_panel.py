@@ -19,16 +19,17 @@ class PanelTest(unittest.TestCase):
 
     def test_columns_align(self):
         rows = self.rows()
-        self.assertEqual(len(rows), 7)  # Claude block, hairline, GPT, Grok, DeepSeek
+        self.assertEqual(len(rows), 8)  # Claude block, hairline, GPT, Grok, Google, DeepSeek
         for a, b in (("CTX", "CACHE"), ("CACHE", "TTL"), ("WK", "FABLE"), ("OUT", "TTFT"),
                      ("TTFT", "TOOL"), ("TOK", "ID"), ("CTX", "BAL")):
             ra = next(r for r in rows if re.search(rf"\b{a}\b", r))
             rb = next(r for r in rows if re.search(rf"\b{b}\b", r))
             self.assertEqual(re.search(rf"\b{a}\b", ra).start(), re.search(rf"\b{b}\b", rb).start(), (a, b))
         self.assertEqual(rows[0].index("Opus"), rows[1].index("$"))
-        bars = {m.start() for r in rows[4:6] for m in [re.search(r"[▰▱]{8}", r)]}
-        self.assertEqual(bars, {re.search(r"[▰▱]{8}", rows[0]).start()})  # GPT / Grok bars line up with CTX
+        bars = {m.start() for r in rows[4:7] for m in [re.search(r"[▰▱]{8}", r)]}
+        self.assertEqual(bars, {re.search(r"[▰▱]{8}", rows[0]).start()})  # GPT / Grok / Google bars line up with CTX
         self.assertEqual(rows[4].index("RESET"), rows[5].index("Bot"))
+        self.assertEqual(rows[5].index("Bot"), rows[6].index("Gemini"))
         self.assertTrue(all(r == r.rstrip() for r in rows))
 
     def test_ctx_follows_compact_window(self):

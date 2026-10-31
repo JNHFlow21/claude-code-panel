@@ -19,12 +19,12 @@ python3 cc-panel --demo        # visual smoke check, no side effects beyond ~/.c
 
 ## How it works
 
-ccstatusline is run with a generated data-only config; `cc-panel` reads TTFT and tool time from the session transcript incrementally and lays everything out on a grid. ccstatusline output is cached per session under `~/.cache/cc-panel` and recomputed only when model, cost, tokens or rate limits change (or every 30 s). The `FABLE` usage fetch is rate-limited to one per 15 minutes across all sessions; do not add a faster poll. The other-subscription rows (Codex, Grok, DeepSeek) come from a detached `cc-panel --refresh-quotas` that holds a machine-wide lock and keeps a per-source interval with failure backoff in `~/.cache/cc-panel/quotas.json`; the panel itself only reads that file.
+ccstatusline is run with a generated data-only config; `cc-panel` reads TTFT and tool time from the session transcript incrementally and lays everything out on a grid. ccstatusline output is cached per session under `~/.cache/cc-panel` and recomputed only when model, cost, tokens or rate limits change (or every 30 s). The `FABLE` usage fetch is rate-limited to one per 15 minutes across all sessions; do not add a faster poll. The other-subscription rows (Codex, Grok, Google, DeepSeek) come from a detached `cc-panel --refresh-quotas` that holds a machine-wide lock and keeps a per-source interval with failure backoff in `~/.cache/cc-panel/quotas.json`; the panel itself only reads that file.
 
 ## Rules
 
 - Never overwrite the user's `settings.json` without a backup; edit only the `statusLine` key and keep every other key.
-- Never print or store credentials. The only credentials touched are the Grok CLI's own login (read-only, in memory) and the DeepSeek key from the user's `deepseek_key_command` (in memory); never write them anywhere or pass them on argv. Network calls are limited to the background refresh of those three sources; no telemetry.
+- Never print or store credentials. The only credentials touched are the Grok CLI's own login (read-only, in memory) and the DeepSeek key from the user's `deepseek_key_command` (in memory); never write them anywhere or pass them on argv. The Google row runs `agy -p /usage` and never touches Antigravity's login files. Network calls are limited to the background refresh of those sources; no telemetry.
 - Keep it a single dependency-free script; Python 3.10 compatible.
 - Do not run the installer on a machine unless the user asked to install.
 - Before changing layout code, run the tests and `cc-panel --demo` and compare.

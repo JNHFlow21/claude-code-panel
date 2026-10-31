@@ -23,7 +23,7 @@ The default Claude Code status line is one long row of loosely spaced text. **cl
 
 - **One block, not a bar** — an accent rail ties three aligned rows together.
 - **All your limits in one column** — `WK` and `FABLE` usage bars stacked, each with a `↻` reset countdown.
-- **Your other subscriptions too** — Codex (ChatGPT) weekly usage and reset credits, the X / Grok weekly pool and your DeepSeek balance, each on its own brand-colored row under the panel. Hide or show them with one hotkey.
+- **Your other subscriptions too** — Codex (ChatGPT) weekly usage and reset credits, the X / Grok weekly pool, Google AI (Antigravity) limits and your DeepSeek balance, each on its own brand-colored row under the panel. Hide or show them with one hotkey.
 - **Warns before you hit the wall** — bars turn amber at 70% and red at 90%.
 - **Prompt-cache TTL countdown** — see how long the cache stays warm (green → amber → red → `cold`), so you know when the next message will be expensive.
 - **Alive while Claude works** — the `✻` spins and the rail breathes while the transcript is being written; still when idle.
@@ -73,6 +73,7 @@ Then add the `statusLine` block above to `~/.claude/settings.json` (use the abso
 | `WK` / `FABLE` | Weekly and Fable weekly usage, `↻` = time until reset |
 | `GPT` | Codex weekly usage with `↻` reset countdown; `RESET` = rate-limit reset credits left (when you have one, when the first expires) |
 | `Grok` | X subscription weekly pool, shared by Grok, Grok Build, Grok Bot and Cursor, split by product (`Bot` / `Build` / `API`) |
+| `Argon` | Google AI subscription via Antigravity: the Gemini 4 Argon weekly cap with `↻` (it runs out before the shared Gemini pool), then the `Gemini` pool and the `Opus·Sonnet` pool (Claude and GPT models in Antigravity), each `5H` / `WK` |
 | `DeepSeek` | DeepSeek API balance (`BAL`) |
 | `OUT` | Output speed (tokens/s) |
 | `TTFT` | Average wait until the first response block (an upper bound on time-to-first-token) |
@@ -86,13 +87,14 @@ Rows for other subscriptions appear by themselves when their CLI is logged in on
 
 - **GPT** — needs the `codex` CLI, signed in. Read from Codex's own `app-server`; spends no quota.
 - **Grok** — needs the `grok` CLI (Grok Build), signed in. Uses that login read-only; when it expires the row greys out until `grok` renews it.
+- **Argon** (Google AI) — needs the Antigravity CLI (`agy`), signed in. Read with `agy -p /usage`; spends no quota.
 - **DeepSeek** — opt-in. Create `~/.config/cc-panel/config.json` with a shell command that writes your API key to file descriptor 3, for example from a secret manager:
 
   ```json
   {"deepseek_key_command": "my-secrets get --fd 3 DEEPSEEK_API_KEY"}
   ```
 
-They refresh in the background — at most one refresher machine-wide, Codex every 5 min, Grok every 10, DeepSeek every 15, doubling the wait (up to 1 h) after a failure — so many open sessions never cause rate limits. A stale value is shown grey.
+They refresh in the background — at most one refresher machine-wide, Codex every 5 min, Grok and Google every 10, DeepSeek every 15, doubling the wait (up to 1 h) after a failure — so many open sessions never cause rate limits. A stale value is shown grey.
 
 `cc-panel --toggle` hides or shows the block (hidden also stops the background refresh). To bind it to a global hotkey with Raycast, add `extras/raycast` (or a copy of it) under Raycast Settings → Script Commands → Script Folders and record a hotkey for *Toggle Claude Code Panel Subscriptions*. Set `CC_PANEL_QUOTAS=0` to turn the feature off.
 
